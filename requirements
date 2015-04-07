@@ -1,0 +1,2 @@
+mongoengine==0.8.7
+pyOpenSSL==0.14
