@@ -277,6 +277,7 @@ class FarmRole(me.Document):
             raise Exception("You should start your farm first.")
 
         server = Server(farm_role=self,
+                        behaviors=self.role.behaviors,
                         index=self._next_server_index(),
                         zone=zone,
                         role=self,
