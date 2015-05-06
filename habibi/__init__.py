@@ -2,8 +2,8 @@
 
 """
 Habibi is a testing tool which scalarizr team uses to mock scalr's side of communication.
-It allowes to test scalarizr behavior on real virtual machines, 
-without implementing it by scalr team. Habibi uses lxc containers as instances, which 
+It allowes to test scalarizr behavior on real virtual machines,
+without implementing it by scalr team. Habibi uses lxc containers as instances, which
 makes habibi tests incredibly fast and totally free (no cloud providers involved).
 
 Habibi consists of several modules:
@@ -61,8 +61,8 @@ from habibi import crypto
 THIS_MACHINE = socket.gethostname()
 
 logging.basicConfig(
-        stream=sys.stderr, 
-        level=logging.DEBUG, 
+        stream=sys.stderr,
+        level=logging.DEBUG,
         format='%(asctime)s %(name)-20s %(levelname)-8s - %(message)s')
 LOG = logging.getLogger('habibi')
 
@@ -356,7 +356,7 @@ class Server(me.Document):
                 self._rootfs_path = os.path.join(server_dir_path, 'rootfs')
             except KeyError:
                 raise BaseException("Can't find server with id: %s" % self.id)
-                
+
         return self._rootfs_path
     """
 
@@ -384,7 +384,7 @@ class Server(me.Document):
         if cwd:
             run_cmd.extend(['-w', cwd])
         run_cmd.extend([self.farm_role.role.image, cmd])
-        run_cmd = map(str, run_cmd)
+        run_cmd = list(map(str, run_cmd))
         lxc_start = subprocess.Popen(" ".join(run_cmd),
                                      shell=True,
                                      cwd=server_dir,
@@ -394,7 +394,8 @@ class Server(me.Document):
         if lxc_start.returncode:
             self.update(set__status='terminated')
             self.reload()
-            raise Exception('Container start or provisioning failed. ret code: %s' % lxc_start.returncode)
+            raise Exception('Container start or provisioning failed. '
+                    'ret code: {retcode}\nSTDERR: {stderr}\nSTDOUT: {stdout}' .format(retcode=lxc_start.returncode, stderr=stderr, stdout=stdout))
         else:
             self.update(set__status='pending', set__container_id=stdout.strip())
             self.reload()
