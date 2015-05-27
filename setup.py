@@ -14,6 +14,6 @@ cfg = dict(
     platforms="any",
     packages=find_packages(),
     include_package_data=True,
-    install_requires=['pymongo==2.8', 'mongoengine==0.8.7', 'pyOpenSSL']
+    install_requires=['peewee==2.6.0', 'pyOpenSSL']
 )
 setup(**cfg)
