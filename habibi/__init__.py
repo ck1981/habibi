@@ -360,10 +360,15 @@ class Server(me.Document):
         return self._rootfs_path
     """
 
-    def run(self, cmd, env, cwd=None):
+    def run(self, cmd, env, cwd=None, link=None):
         """
         Run server as prepared docker image
-        @param cmd: command to run into container
+
+        :param cmd: command to run into container
+        :type  cmd: tuple
+
+        :param link: list of container aliases or ids to link with
+        :type  link: tuple
         """
 
         self.reload(max_depth=5)
@@ -377,12 +382,19 @@ class Server(me.Document):
         if not os.path.isdir(server_dir):
             os.makedirs(server_dir)
         run_cmd = ['docker', 'run', '-t', '-i', '-d', '--name=%s' % self.id]
+
         for k, v in self.volumes.items():
             run_cmd.extend(['-v', '%s:%s:rw' % (k, v)])
+
         for k, v in env.items():
             run_cmd.extend(['-e', "%s='%s'" % (k, v)])
+
         if cwd:
             run_cmd.extend(['-w', cwd])
+
+        if link:
+            for alias in link:
+                run_cmd.extend(['--link', '{0}:{0}'.format(alias)])
         run_cmd.extend([self.farm_role.role.image, cmd])
         run_cmd = list(map(str, run_cmd))
         lxc_start = subprocess.Popen(" ".join(run_cmd),
