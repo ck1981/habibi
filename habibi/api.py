@@ -1,60 +1,53 @@
 __author__ = 'spike'
 
-import os
+import uuid
 import functools
 
-from operator import xor
-
-try:
-    from urllib.parse import urlparse
-except ImportError:
-    from urlparse import urlparse
-
-import mongoengine as me
-
-import habibi
+import habibi.db
+from habibi.utils import crypto
 
 
-class ApiException(Exception):
+
+class HabibiApiException(Exception):
     pass
 
-GV_SCOPES = ('farm', 'role', 'farm_role', 'server')
 
-class ScalrApi(object):
+class HabibiApi:
 
-    def __init__(self, mongodb_url=None):
-        habibi.configure(mongodb_url)
-        self.get_servers = functools.partial(self._get, habibi.Server, 'servers')
-        self.get_farms = functools.partial(self._get, habibi.Farm, 'farms')
-        self.get_farm_roles = functools.partial(self._get, habibi.FarmRole, 'farm roles')
-        self.get_roles = functools.partial(self._get, habibi.Role, 'roles')
-        self.get_events = functools.partial(self._get, habibi.Event, 'events')
+    def __init__(self, db_url='sqlite://habibi.db'):
+        habibi.db.connect_to_db(db_url)
+        self.get_roles = functools.partial(self._get, habibi.db.Role, 'roles')
+        self.get_farms = functools.partial(self._get, habibi.db.Farm, 'farms')
+        self.get_events = functools.partial(self._get, habibi.db.Event, 'events')
+        self.get_servers = functools.partial(self._get, habibi.db.Server, 'servers')
+        self.get_farm_roles = functools.partial(self._get, habibi.db.FarmRole, 'farm roles')
 
     def _get(self, model, plural, *ids):
-        kwargs = ids and {"id__in": ids} or dict()
-        objects = model.objects(**kwargs)
+        objects = model.select().where(model.id << ids)
         if ids and len(ids) != len(objects):
-            raise ApiException('Not all {0} were found by ids {1}'.format(plural, ", ".join(map(str, ids))))
+            raise HabibiApiException('Not all {} were found by ids {}'.format(plural, ids))
         return objects
 
 
     def get_farm_by_name(self, name):
         try:
-            return habibi.Farm.objects(name=name)[0]
+            return habibi.db.Farm.get(Farm.name == name)
         except IndexError:
-            raise ApiException('Farm with name {0} not found')
+            raise HabibiApiException('Farm with name {0} not found')
 
-    def create_farm(self, name):
-        farm = habibi.Farm(name=name)
-        farm.save()
-        return farm
+    def create_farm(self, name, farm_crypto_key=None):
+        try:
+            farm_crypto_key = farm_crypto_key or crypto.keygen()
+            return habibi.db.Farm.create(name=name, farm_crypto_key=farm_crypto_key)
+        except:
+            pass
 
     def create_role(self, name, image, behaviors=None):
-        behaviors = behaviors or ["base"]
-        role = habibi.Role(name=name, image=image, behaviors=behaviors)
-        role.save()
-        return role
-
+        behaviors = behaviors or "base"
+        try:
+            return habibi.db.Role.create(name=name, image=image, behaviors=behaviors)
+        except:
+            pass
 
     def add_farm_role(self, farm_id, role_id, orchestration=None):
         orchestration = orchestration or dict()
@@ -128,23 +121,21 @@ class ScalrApi(object):
                         'rule_indexes': mapping[server_id]} for server_id in mapping]
         }
 
-    def create_event(self, name, triggering_server_id):
+    def create_event(self, name, triggering_server_id, event_id=None):
         server = self.get_servers(triggering_server_id)[0]
-        ev = habibi.Event(name=name, triggering_server=server)
-        ev.save()
-        return ev
+        event_id = event_id or str(uuid.uuid4())
+        return habibi.db.Event.create(name=name, triggering_server=server, event_id=event_id)
 
+    '''
     def set_global_variable(self, gv_name, gv_value, scope, scope_id):
-        """
-        Available scopes: role, farm, farm-role, server
-        """
-        if not scope in GV_SCOPES:
-            raise ApiException("Unknown GV scope: {0}".format(scope))
+        """Available scopes: role, farm, farm-role, server."""
+        if not scope in habibi.db.GlobalVariable.scopes:
+            raise HabibiApiException("Unknown GV scope: {0}".format(scope))
 
         try:
             getattr(self, 'get_{0}s'.format(scope))(scope_id)
-        except ApiException:
-            raise ApiException('{0} with id {1} does not exist'.format(scope, scope_id))
+        except HabibiApiException:
+            raise HabibiApiException('{0} with id {1} does not exist'.format(scope, scope_id))
 
         kwargs = {'set__scopes__{0}__scope_{1}'.format(scope, scope_id): gv_value, 'upsert': True}
         habibi.GlobalVariable.objects(name=gv_name).update_one(**kwargs)
@@ -160,8 +151,8 @@ class ScalrApi(object):
         if not isinstance(scope_ids, (list, tuple)):
             scope_ids = [scope_ids]
 
-        if not scope in GV_SCOPES:
-            raise ApiException("Unknown GV scope: {0}".format(scope))
+        if not scope in habibi.db.GlobalVariable.scopes:
+            raise HabibiApiException("Unknown GV scope: {0}".format(scope))
 
         def to_str(value):
             if value is not None:
@@ -207,7 +198,7 @@ class ScalrApi(object):
         if not user_defined:
             result = {}
             for server_id, server_gvs in gvs.items():
-                result[server_id] = [{'name': key, 'value': to_str(value), 'private': 0} 
+                result[server_id] = [{'name': key, 'value': to_str(value), 'private': 0}
                         for key, value in server_gvs.items()]
             return result
 
@@ -216,8 +207,9 @@ class ScalrApi(object):
             'server': {'farm_role': 1},
             'farm_role': {'farm': 2, 'role': 1}
         }
-        
+
         processed_scopes = list()
+
         def update_vars_from_scope(scope, scope_id, model=None):
             if scope in processed_scopes:
                 return
@@ -226,12 +218,12 @@ class ScalrApi(object):
                 try:
                     model = getattr(self, "get_{0}s".format(scope))(scope_id)[0]
                 except KeyError:
-                    raise ApiException('{0} with id {1} does not exist'.format(scope.capitalize(), scope_id))
+                    raise HabibiApiException('{0} with id {1} does not exist'.format(scope.capitalize(), scope_id))
 
             for gv in global_vars_models:
                 if gv.name in gvs:
                     # GV with such name was redefined on lower scope
-                    continue 
+                    continue
                 try:
                     value_for_scope = gv['scopes'][scope]["scope_{0}".format(scope_id)]
                 except KeyError:
@@ -247,21 +239,7 @@ class ScalrApi(object):
                     parent_id = getattr(model, parent).id
                     update_vars_from_scope(parent, parent_id)
 
-
-
         update_vars_from_scope(scope, scope_id, model=scope_model)
-        return [{'name': key, 'value': to_str(value), 'private': 0} 
+        return [{'name': key, 'value': to_str(value), 'private': 0}
                 for key, value in gvs.items()]
-
-
-
-
-
-
-
-
-
-
-
-        
-
+    '''
