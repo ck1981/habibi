@@ -360,7 +360,7 @@ class Server(me.Document):
         return self._rootfs_path
     """
 
-    def run(self, cmd, env, cwd=None, link=None):
+    def run(self, cmd, env, cwd=None, link=None, privileged=None):
         """
         Run server as prepared docker image
 
@@ -395,6 +395,10 @@ class Server(me.Document):
         if link:
             for alias in link:
                 run_cmd.extend(['--link', '{0}:{0}'.format(alias)])
+
+        if privileged:
+            run_cmd.extend(['--privileged=true'])
+
         run_cmd.extend([self.farm_role.role.image, cmd])
         run_cmd = list(map(str, run_cmd))
         lxc_start = subprocess.Popen(" ".join(run_cmd),
