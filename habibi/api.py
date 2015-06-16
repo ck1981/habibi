@@ -92,6 +92,8 @@ class ScalrApi(object):
         servers = []
         for fr in farm.farm_roles:
             for s in fr.servers:
+                if s.status in ('terminated', 'pending terminate', 'pending', 'pending launch'):
+                    continue
                 s.farm_role_id = fr.id
                 s.behaviors = set(fr.role.behaviors)
                 servers.append(s)
@@ -207,7 +209,7 @@ class ScalrApi(object):
         if not user_defined:
             result = {}
             for server_id, server_gvs in gvs.items():
-                result[server_id] = [{'name': key, 'value': to_str(value), 'private': 0} 
+                result[server_id] = [{'name': key, 'value': to_str(value), 'private': 0}
                         for key, value in server_gvs.items()]
             return result
 
@@ -216,7 +218,7 @@ class ScalrApi(object):
             'server': {'farm_role': 1},
             'farm_role': {'farm': 2, 'role': 1}
         }
-        
+
         processed_scopes = list()
         def update_vars_from_scope(scope, scope_id, model=None):
             if scope in processed_scopes:
@@ -231,7 +233,7 @@ class ScalrApi(object):
             for gv in global_vars_models:
                 if gv.name in gvs:
                     # GV with such name was redefined on lower scope
-                    continue 
+                    continue
                 try:
                     value_for_scope = gv['scopes'][scope]["scope_{0}".format(scope_id)]
                 except KeyError:
@@ -250,7 +252,7 @@ class ScalrApi(object):
 
 
         update_vars_from_scope(scope, scope_id, model=scope_model)
-        return [{'name': key, 'value': to_str(value), 'private': 0} 
+        return [{'name': key, 'value': to_str(value), 'private': 0}
                 for key, value in gvs.items()]
 
 
@@ -263,5 +265,5 @@ class ScalrApi(object):
 
 
 
-        
+
 
