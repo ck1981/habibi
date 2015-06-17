@@ -92,7 +92,7 @@ class ScalrApi(object):
         servers = []
         for fr in farm.farm_roles:
             for s in fr.servers:
-                if s.status in ('terminated', 'pending terminate', 'pending', 'pending launch'):
+                if s.status in ('terminated', 'pending terminate', 'pending launch'):
                     continue
                 s.farm_role_id = fr.id
                 s.behaviors = set(fr.role.behaviors)
