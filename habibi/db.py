@@ -1,3 +1,6 @@
+__author__ = 'Nick Demyanchuk'
+__email__ = "spike@scalr.com"
+
 import uuid
 
 import peewee
@@ -16,14 +19,19 @@ def connect_to_db(url):
 
 """Peewee models for Scalr entities."""
 
+def db_table_name_for_model(model):
+     return "{}s".format(model.__class__.__name__.lower())
+
+
 class HabibiModel(peewee.Model):
     class Meta:
-
-        def get_table_name(model):
-             return "{}s".format(model.__class__.__name__.lower())
-
         database = DB_PROXY
-        db_table_func = get_table_name
+        db_table_func = db_table_name_for_model
+
+        pass
+    pass
+
+
 
 class Farm(HabibiModel):
     name = peewee.CharField(unique=True)
@@ -118,7 +126,7 @@ class Role(HabibiModel):
     behaviors = peewee.CharField()
 
 
-class FarmRole(HabibiModel):
+class Farmrole(HabibiModel):
     farm = peewee.ForeignKeyField(Farm, related_name='farm_roles')
     role = peewee.ForeignKeyField(Role)
     orchestration = peewee.TextField()
@@ -157,18 +165,18 @@ class Server(HabibiModel):
 
     index = peewee.IntegerField()
     zone = peewee.CharField()
-    farm_role = peewee.ForeignKeyField(FarmRole, related_name='servers')
+    farm_role = peewee.ForeignKeyField(Farmrole, related_name='servers')
     public_ip = peewee.CharField()
     private_ip = peewee.CharField()
     crypto_key = peewee.CharField()
     host_machine = peewee.CharField()
     container_id = peewee.CharField()
-    volumes = peewee.TextField()
+    volumes = peewee.JSONField()
     status = peewee.CharField(default='pending launch',
                 choices=(('running', 'Running'), ('pending launch', 'Pending launch'),
-                    ('pending', 'Pending'),('initializing', 'Initializing'),
-                    ('pending terminate', 'Pending terminate'),
-                    ('terminated', 'Terminated')))
+                        ('pending', 'Pending'),('initializing', 'Initializing'),
+                        ('pending terminate', 'Pending terminate'),
+                        ('terminated', 'Terminated')))
 
     def __init__(self, farm_role=None, id=None, index=0, crypto_key=None, farm_hash=None,
                  public_ip=None, private_ip=None, status='pending launch', zone=None,
@@ -192,10 +200,10 @@ class Server(HabibiModel):
 
 '''
     def run(self, cmd, env, cwd=None):
-        """Run server as prepared docker image
+        """Run server in docker container.
 
         :param cmd: command to run into container
-
+        :param env: environment variables to set for the container
         """
 
         self.reload(max_depth=5)
@@ -327,4 +335,4 @@ class GlobalVariable(HabibiModel):
     name = peewee.CharField()
     scopes = peewee.CharField()
 
-SCALR_ENTITIES = (Farm, Role, FarmRole, Server, Event, GlobalVariable)
+SCALR_ENTITIES = (Farm, Role, Farmrole, Server, Event, GlobalVariable)

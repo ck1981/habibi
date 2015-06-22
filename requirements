@@ -1,3 +1,2 @@
-pymongo==2.8
-mongoengine==0.8.7
-pyOpenSSL==0.14
+peewee
+docker-py
