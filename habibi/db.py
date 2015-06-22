@@ -28,14 +28,8 @@ class HabibiModel(peewee.Model):
         database = DB_PROXY
         db_table_func = db_table_name_for_model
 
-        pass
-    pass
-
-
-
 class Farm(HabibiModel):
     name = peewee.CharField(unique=True)
-    farm_crypto_key = peewee.CharField()
     status = peewee.CharField(default='terminated',
                               choices=(('running', 'Running'), ('terminated', 'Terminated')))
 
@@ -163,101 +157,36 @@ class Farmrole(HabibiModel):
 
 class Server(HabibiModel):
 
+    id = peewee.CharField(primary_key=True)
     index = peewee.IntegerField()
     zone = peewee.CharField()
-    farm_role = peewee.ForeignKeyField(Farmrole, related_name='servers')
-    public_ip = peewee.CharField()
-    private_ip = peewee.CharField()
-    crypto_key = peewee.CharField()
-    host_machine = peewee.CharField()
-    container_id = peewee.CharField()
-    volumes = peewee.JSONField()
+    farmrole = peewee.ForeignKeyField(Farmrole, related_name='servers')
+    public_ip = peewee.CharField(null=True)
+    private_ip = peewee.CharField(null=True)
+    host_machine = peewee.CharField(null=True)
+    container_id = peewee.CharField(null=True)
+    volumes = peewee.TextField(null=True)
     status = peewee.CharField(default='pending launch',
-                choices=(('running', 'Running'), ('pending launch', 'Pending launch'),
-                        ('pending', 'Pending'),('initializing', 'Initializing'),
-                        ('pending terminate', 'Pending terminate'),
-                        ('terminated', 'Terminated')))
-
-    def __init__(self, farm_role=None, id=None, index=0, crypto_key=None, farm_hash=None,
+                              choices=(('running', 'Running'), ('pending launch', 'Pending launch'),
+                                       ('pending', 'Pending'), ('initializing', 'Initializing'),
+                                       ('pending terminate', 'Pending terminate'), ('terminated', 'Terminated')))
+"""
+    def __init__(self, farm_role=None, id=None, index=None,
                  public_ip=None, private_ip=None, status='pending launch', zone=None,
                  host_machine=None, volumes=None, **kwargs):
-        kwargs2 = dict(
-            id=id or str(uuid.uuid4()),
-            index=index,
-            farm_role=farm_role,
-            crypto_key=crypto_key or crypto.keygen(40),
-            farm_hash=farm_hash or crypto.keygen(10),
-            public_ip=public_ip,
-            private_ip=private_ip,
-            status=status,
-            zone=zone,
-            _rootfs_path=None,
-            host_machine=host_machine,
-            volumes=volumes or dict()
-        )
+        kwargs2 = dict(id=id or str(uuid.uuid4()),
+                       index=index,
+                       farm_role=farm_role,
+                       public_ip=public_ip,
+                       private_ip=private_ip,
+                       status=status,
+                       zone=zone,
+                       host_machine=host_machine,
+                       volumes=volumes or dict())
         kwargs.update(kwargs2)
         super(Server, self).__init__(**kwargs)
-
+"""
 '''
-    def run(self, cmd, env, cwd=None):
-        """Run server in docker container.
-
-        :param cmd: command to run into container
-        :param env: environment variables to set for the container
-        """
-
-        self.reload(max_depth=5)
-        server_dir = os.path.join(self.farm_role.farm.base_dir, self.id)
-        if not os.path.isdir(server_dir):
-            os.makedirs(server_dir)
-        run_cmd = ['docker', 'run', '-t', '-i', '-d', '--name=%s' % self.id]
-        for k, v in self.volumes.items():
-            run_cmd.extend(['-v', '%s:%s:rw' % (k, v)])
-        for k, v in env.items():
-            run_cmd.extend(['-e', "%s='%s'" % (k, v)])
-        if cwd:
-            run_cmd.extend(['-w', cwd])
-        run_cmd.extend([self.farm_role.role.image, cmd])
-        run_cmd = list(map(str, run_cmd))
-        lxc_start = subprocess.Popen(" ".join(run_cmd),
-                                     shell=True,
-                                     cwd=server_dir,
-                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = lxc_start.communicate()
-
-        if lxc_start.returncode:
-            self.update(set__status='terminated')
-            self.reload()
-            raise Exception('Container start or provisioning failed. '
-                    'ret code: {retcode}\nSTDERR: {stderr}\nSTDOUT: {stdout}' .format(retcode=lxc_start.returncode, stderr=stderr, stdout=stdout))
-        else:
-            self.update(set__status='pending', set__container_id=stdout.strip())
-            self.reload()
-
-    def terminate(self):
-        self.reload()
-        if self.status != 'terminated':
-            if self.host_machine != THIS_MACHINE:
-                raise Exception('Server %s was started on another host machine' % self.id)
-            subprocess.call('docker kill %s' % self.container_id, shell=True)
-            subprocess.call('docker rm %s' % self.container_id, shell=True)
-            self.status = 'terminated'
-            self.save()
-
-    def stop(self):
-        p = subprocess.Popen('vagrant halt', shell=True, cwd=self.server_dir)
-        p.communicate()
-
-    def get_output(self):
-        self.reload()
-        if self.status != 'pending launch':
-            p = subprocess.Popen(('docker', 'logs', self.container_id), shell=True, stdin=subprocess.PIPE,
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout = p.communicate()[0]
-            return stdout.strip()
-        else:
-            raise Exception('Server hasn ot been started yet')
-
     def wait(self):
         p = subprocess.Popen(('docker', 'wait', self.container_id), shell=True, stdin=subprocess.PIPE,
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -268,70 +197,16 @@ class Server(HabibiModel):
         return os.path.join(self.farm_role.farm.base_dir, self.id)
 '''
 
-'''
-class ServerSet(object):
-    """
-    Represents list of servers. Every action on this object will be performed consequently.
-    Also supports iteration, if you want to get one server or subset:
-
-        s = ServerSet([server1, server2, server3])
-        s.block_network() # kill network to all servers in set
-        s.terminate() # terminate all servers in set
-
-        s[0] # first server in set
-        s[:2] # ServerSet object with first and second servers of current ServerSet
-    """
-
-    def __init__(self, servers):
-        self._servers = servers
-
-    def __getattr__(self, item):
-        return self._wrapper(self._servers, item)
-
-    def __iter__(self):
-        for server in self._servers:
-            yield server
-
-    def __getitem__(self, item):
-        if not isinstance(item, (int, slice)):
-            raise TypeError('Indicies must be of int type, not %s' % type(item))
-        ret = self._servers[item]
-        if isinstance(ret, list):
-            return ServerSet(ret)
-        else:
-            return ret
-
-    class _wrapper(object):
-
-        def __init__(self, servers, attr):
-            self.attr_name = attr
-            self.servers = servers
-
-        def __call__(self, *args, **kwargs):
-            ret = []
-            for server in self.servers:
-                attr = getattr(server, self.attr_name)
-                ret.append(attr(*args, **kwargs))
-            return ret
-'''
 
 class Event(HabibiModel):
-    class Meta:
-        db_table = 'events'
-
     name = peewee.CharField()
     event_id = peewee.CharField()
     triggering_server = peewee.ForeignKeyField(Server, related_name='sent_events')
 
-    def __init__(self, id=None, triggering_server=None, name=None, **kwargs):
-        if id is None:
-            id = str(uuid.uuid4())
-        super(Event, self).__init__(id=id, triggering_server=triggering_server, name=name, **kwargs)
-
-
 
 class GlobalVariable(HabibiModel):
-    scopes = ('farm', 'role', 'farm_role', 'server')
+    scopes_available = ('farm', 'role', 'farm_role', 'server')
+
     name = peewee.CharField()
     scopes = peewee.CharField()
 

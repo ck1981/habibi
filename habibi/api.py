@@ -36,9 +36,9 @@ class HabibiApi:
 
     def __getattr__(self, item):
         if item.startswith('get_'):
-            model_name = item[4:]
+            model_name = item[4:].replace('_', '').capitalize()
             method = self._get
-            model_name = string.capwords(model_name, sep='_')
+
             if model_name.endswith('s'):
                 model_name = model_name[:-1]
                 method = self._get_many
@@ -48,12 +48,11 @@ class HabibiApi:
 
     # Add handling of Index violations
     def create_farm(self, name, farm_crypto_key=None):
-        farm_crypto_key = farm_crypto_key or crypto.keygen()
-        new_farm = habibi_db.Farm.create(name=name, farm_crypto_key=farm_crypto_key)
+        new_farm = habibi_db.Farm.create(name=name)
         return shortcuts.model_to_dict(new_farm)
 
     def create_role(self, name, image, behaviors=None):
-        """Create new habibi role -
+        """Create new habibi role
         For more info see https://scalr-wiki.atlassian.net/wiki/display/docs/Roles
 
         :type behaviors: str | list | tuple
@@ -76,47 +75,54 @@ class HabibiApi:
 
     add_farm_role = add_farmrole
 
-    # TODO: naming
-    def launch_server(self, farmrole_id, cmd, env=None, zone=None, volumes=None, priveleged=False,
-                      caps=None, caps_disabled=None):
-        """Creates server record in DB, creates (but does not start) docker container.
+    def create_server(self, farm_role_id, zone=None, volumes=None):
+        """Creates server record in DB.
 
         :param farmrole_id:
         :param zone:
         :param volumes:
+
         :return:
         """
-
-        farm_role = self.get_farm_roles(farmrole_id)[0]
+        farmrole = self.get_farmroles(farmrole_id)[0]
+        server_id = str(uuid.uuid4())
         if isinstance(volumes, dict):
             volumes = json.dumps(volumes)
 
-        try:
-            self.docker.get_image(farm_role.role.image)
-        except:
-            pass
-
-        self.docker.create_container(farm_role.role.image, )
-        new_server = habibi_db.Server.create(farm_role, zone=zone, host_machine=socket.gethostname(), volumes=volumes)
+        new_server = habibi_db.Server.create(id=server_id, farmrole=farmrole, zone=zone, volumes=volumes)
         return shortcuts.model_to_dict(new_server)
 
-    create_server = add_farmrole_server
-
-    def run_server(self, server_id):
-        """Run docker container for the corresponding server, created
-        earlier using `add_farmrole_server`
+    def run_server(self, server_id, cmd, env=None):
+        """Run docker container for the corresponding server,
+        created earlier using `create_server`
 
         :param server_id:
+        :param cmd:
+        :param env:
+
         :return:
         """
         server = self.get_server(server_id)
-        try:
-            self.docker.start()
-        server.run()
+        volumes = json.loads(server.volumes)
+
+        create_result = self.docker.create_container(server.farmrole.role.image, command=cmd,
+             environment=env, volumes=volumes, detach=True, tty=True)
+        container_id = create_result['Id']
+        self.docker.start(container=container_id)
+
+        habibi_db.Server.update(host_machine=socket.gethostname(),
+                                container_id=container_id,
+                                status='pending').where(habibi_db.Server.id == server_id)
 
     def terminate_server(self, server_id):
-        server = self.get_servers(server_id)[0]
-        server.terminate()
+        server = self.get_server(server_id)
+        self.docker.kill(server.container_id)
+        self.docker.remove_container(server.container_id)
+
+        habibi_db.Server.update(status='terminated').where(habibi_db.Server.id == server_id)
+
+    def get_server_output(self, server_id):
+        pass
 
     def orchestrate_event(self, event_id):
         event = self.get_events(event_id)[0]
@@ -165,22 +171,21 @@ class HabibiApi:
     def create_event(self, name, triggering_server_id, event_id=None):
         server = self.get_server(triggering_server_id)
         event_id = event_id or str(uuid.uuid4())
-        return habibi_db.Event.create(name=name, triggering_server=server, event_id=event_id)
-
+        new_event = habibi_db.Event.create(name=name, triggering_server=server, event_id=event_id)
+        return shortcuts.model_to_dict(new_event)
 
     def set_global_variable(self, gv_name, gv_value, scope, scope_id):
         """Available scopes: role, farm, farm-role, server."""
-        if not scope in habibi_db.GlobalVariable.scopes:
+        if not scope in habibi_db.GlobalVariable.scopes_available:
             raise HabibiApiException("{} is not correct scope for global variables.".format(scope))
 
         try:
-            getattr(self, 'get_{0}s'.format(scope))(scope_id)
+            getattr(self, 'get_{0}'.format(scope))(scope_id)
         except HabibiApiException:
-            raise HabibiApiException('{0} with id {1} does not exist'.format(scope, scope_id))
+            raise HabibiApiException('{} with id {} does not exist'.format(scope, scope_id))
 
         kwargs = {'set__scopes__{0}__scope_{1}'.format(scope, scope_id): gv_value, 'upsert': True}
         habibi.GlobalVariable.objects(name=gv_name).update_one(**kwargs)
-
 
     def get_global_variables(self, scope, scope_ids, event_id=None, user_defined=False):
         """
