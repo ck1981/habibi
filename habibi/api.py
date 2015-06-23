@@ -16,6 +16,7 @@ import functools
 import itertools
 
 import docker
+import peewee
 from playhouse import shortcuts
 from docker import utils as docker_utils
 
@@ -45,20 +46,22 @@ class HabibiApi:
 
         """
         self.base_dir = base_dir
-        habibi_db.connect_to_db(db_url)
+        self.database = habibi_db.connect_to_db(db_url)
         self.docker = docker.Client(base_url=docker_url)
 
     def _get_many(self, model, *ids):
-        objects = list(model.select().where(model.id << ids))
+        objects = list(model.select().where(model.id << ids).dicts())
         if len(ids) != len(objects):
             found_ids = [obj.id for obj in objects]
             not_found = map(str, set(ids) - set(found_ids))
             raise HabibiNotFound(model, *not_found)
         return objects
 
-    def _get(self, model, model_id):
+    def _get(self, model, model_id=None, **kwargs):
         try:
-            return model.select().where(model.id == model_id).get()
+            if model_id:
+                kwargs.update(dict(id=model_id))
+            return model.get(**kwargs)
         except model.DoesNotExist as e:
             raise HabibiNotFound(model, model_id) from e
 
@@ -66,14 +69,14 @@ class HabibiApi:
         """Get single or multiple habibi entities from DB (e.g. farms, server, roles)."""
         if item.startswith('get_'):
             method = item.endswith('s') and self._get_many or self._get
-            model_name = string.capwords(item[4:])
+            model_name = "".join(word.capitalize() for word in item[4:].split('_'))
             if model_name.endswith('s'):
                 model_name = model_name[:-1]
 
             model = getattr(habibi_db, model_name)
             return functools.partial(method, model)
 
-    def create_farm(self, name, farm_crypto_key=None):
+    def create_farm(self, name):
         new_farm = habibi_db.Farm.create(name=name)
         return shortcuts.model_to_dict(new_farm)
 
@@ -105,12 +108,6 @@ class HabibiApi:
         Remove role, destroy servers
         """
         farm = self.get_farm(farm_id)
-
-
-    def farm_launch(self, farm_id):
-        if not os.path.isdir(self.base_dir):
-            os.makedirs(self.base_dir)
-        self.update(status='running').execute()
 
     def farm_terminate(self, farm_id):
         pass
@@ -253,19 +250,20 @@ class HabibiApi:
 
     def set_global_variable(self, gv_name, gv_value, scope, scope_id):
         """Available scopes: role, farm, farm-role, server."""
-        if scope not in habibi_db.GlobalVariable.scopes_available:
+        if scope not in habibi_db.GV_SCOPES_AVAILABLE:
             raise HabibiApiException(
-                "{} is not correct scope for global variables.".format(scope))
+                "Unknown scope for GVs (global variables): {}.".format(scope))
 
-        try:
-            getattr(self, 'get_{0}'.format(scope))(scope_id)
-        except HabibiApiException:
-            raise HabibiApiException(
-                '{} with id {} does not exist'.format(scope, scope_id))
+        getattr(self, 'get_{0}'.format(scope))(scope_id)
 
-        kwargs = {'set__scopes__{0}__scope_{1}'.format(
-            scope, scope_id): gv_value, 'upsert': True}
-        habibi_db.GlobalVariable.objects(name=gv_name).update_one(**kwargs)
+        with self.database.atomic() as transaction:
+            try:
+                gv = self.get_global_variable(name=gv_name)
+                gv.scopes[scope][scope_id] = gv_value
+                gv.save()
+            except peewee.IntegrityError as e:
+                habibi_db.GlobalVariable.create(name=gv_name, scopes=dict(scope=dict(scope_id=gv_value)))
+
 
     def get_global_variables(self, scope, scope_ids, event_id=None, user_defined=False):
         """

@@ -10,14 +10,23 @@ DB_PROXY = peewee.Proxy()
 
 
 def connect_to_db(url):
+    """Connect to DB specified in url,
+    create tables for all habibi models.
+
+    :return: database object
+    :return type: peewee.Database
+    """
     database = db_url.connect(url)
     database.register_fields({'json': 'json'})
     DB_PROXY.initialize(database)
     for model in SCALR_ENTITIES:
         model.create_table(fail_silently=True)
 
+    return database
 
-class JsonField(peewee.CharField):
+
+class JsonField(peewee.TextField):
+
     def db_value(self, value):
         return json.dumps(value)
 
@@ -41,13 +50,12 @@ class HabibiModel(peewee.Model):
 
 class Farm(HabibiModel):
     name = peewee.CharField(unique=True)
-    status = peewee.CharField(default='terminated')
 
 
 class Role(HabibiModel):
     name = peewee.CharField(unique=True)
     image = peewee.CharField()
-    behaviors = peewee.CharField()
+    behaviors = JsonField()
 
 
 class FarmRole(HabibiModel):
@@ -75,10 +83,12 @@ class Event(HabibiModel):
     triggering_server = peewee.ForeignKeyField(Server, related_name='sent_events')
 
 
-class GlobalVariable(HabibiModel):
-    scopes_available = ('farm', 'role', 'farm_role', 'server')
+GV_SCOPES_AVAILABLE = ('farm', 'role', 'farm_role', 'server')
 
-    name = peewee.CharField()
-    scopes = peewee.CharField()
+
+class GlobalVariable(HabibiModel):
+    name = peewee.CharField(unique=True)
+    scopes = JsonField(default={scope: {} for scope in GV_SCOPES_AVAILABLE}, null=True)
+
 
 SCALR_ENTITIES = (Farm, Role, FarmRole, Server, Event, GlobalVariable)
