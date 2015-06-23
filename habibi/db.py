@@ -25,6 +25,14 @@ def connect_to_db(url):
     return database
 
 
+def get_model_name_from_scope(scope):
+    """Finds peewee model name by scope name.
+       e.g. farm -> Farm
+            farm_role -> FarmRole
+    """
+    return "".join([word.capitalize() for word in scope.split('_')])
+
+
 class JsonField(peewee.TextField):
 
     def db_value(self, value):

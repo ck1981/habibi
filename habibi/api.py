@@ -40,18 +40,28 @@ class HabibiNotFound(HabibiApiException):
 
 
 class HabibiApi:
+    """Graph of GV scopes precedence (easily extendable)."""
+    scopes_graph = {'server': {'farm_role': 1}, 'farm_role': {'farm': 2, 'role': 1}}
 
     def __init__(self, db_url='sqlite:///habibi.db', docker_url='unix://var/run/docker.sock', base_dir='.habibi'):
-        """
-
-        """
         self.base_dir = base_dir
         self.database = habibi_db.connect_to_db(db_url)
         self.docker = docker.Client(base_url=docker_url)
 
     def _get_many(self, model, *ids):
-        objects = list(model.select().where(model.id << ids).dicts())
-        if len(ids) != len(objects):
+        """Get multiple entities of a kind `model` in one call.
+           If `ids` were not specified, returns all entities of kind `model`.
+
+           If `ids` provided, filter entities by id, using values from the list.
+
+           :return type: list of peewee.Model
+        """
+        query = model.select()
+        if ids:
+            query.where(model.id.in_(ids))
+        objects = list(query)
+
+        if ids and len(ids) != len(objects):
             found_ids = [obj.id for obj in objects]
             not_found = map(str, set(ids) - set(found_ids))
             raise HabibiNotFound(model, *not_found)
@@ -86,9 +96,7 @@ class HabibiApi:
 
         :type behaviors: str or iterable
         """
-        behaviors = behaviors or "base"
-        if isinstance(behaviors, (tuple, list, set)):
-            behaviors = ','.join(behaviors)
+        behaviors = behaviors or ["base"]
 
         new_role = habibi_db.Role.create(name=name, image=image, behaviors=behaviors)
         return shortcuts.model_to_dict(new_role)
@@ -97,15 +105,15 @@ class HabibiApi:
         """ """
         orchestration = orchestration or dict()
 
-        farm = self.get_farms(farm_id)[0]
-        role = self.get_roles(role_id)[0]
+        farm = self.get_farm(farm_id)
+        role = self.get_role(role_id)
 
         new_farm_role = habibi_db.FarmRole.create(farm=farm, role=role, orchestration=json.dumps(orchestration))
         return shortcuts.model_to_dict(new_farm_role)
 
     def farm_remove_role(self, farm_id, farm_role_id):
         """
-        Remove role, destroy servers
+        Remove role from the farm, destroy role's servers.
         """
         farm = self.get_farm(farm_id)
 
@@ -261,12 +269,23 @@ class HabibiApi:
                 gv = self.get_global_variable(name=gv_name)
                 gv.scopes[scope][scope_id] = gv_value
                 gv.save()
-            except peewee.IntegrityError as e:
-                habibi_db.GlobalVariable.create(name=gv_name, scopes=dict(scope=dict(scope_id=gv_value)))
+            except HabibiNotFound as e:
+                scopes = habibi_db.GlobalVariable.scopes.default
+                scopes[scope][scope_id] = gv_value
+                habibi_db.GlobalVariable.create(name=gv_name, scopes=scopes)
 
 
-    def get_global_variables(self, scope, scope_ids, event_id=None, user_defined=False):
-        """
+    def calculate_global_variables(self, scope, scope_ids, event_id=None, user_defined=False):
+        """Get global variables for the specified scope (e.g. for farm with id=135)
+
+        If scope is `server`, returning value will contain general server-related GVs.
+        If both `server` and `event_id` were specified, returning value will also contain event-related GVs.
+
+        If `user_defined` is True, returning value will contain user-defined GVs (created using set_global_variable method),
+        overrided down to the `scope`. More about GVs, it's scopes and GVs precedence, see
+
+        https://scalr-wiki.atlassian.net/wiki/display/docs/Global+Variable+Scopes
+
         :param scope: Scope you want to get GVs for
         :param scope_ids: Id or list of ids of the scope
         :param user_defined: if set, return value will contain user defined variables
@@ -275,19 +294,16 @@ class HabibiApi:
         if not isinstance(scope_ids, (list, tuple)):
             scope_ids = [scope_ids]
 
-        if not scope in habibi_db.GlobalVariable.scopes:
-            raise HabibiApiException("Unknown GV scope: {0}".format(scope))
+        if not scope in habibi_db.GV_SCOPES_AVAILABLE:
+            raise HabibiApiException("Unknown scope for GVs (global variables): {}".format(scope))
+        scope_model = getattr(habibi_db, habibi_db.get_model_name_from_scope(scope))
 
         def to_str(value):
-            if value is not None:
-                return str(value)
-            else:
-                return ''
+            return value is None and '' or str(value)
 
         # Mapping {scope_id1: {gv1: value, gv2: value}, scope_id2: {...}}
         gvs = {_id: dict() for _id in scope_ids}
-
-        global_vars_models = habibi_db.GlobalVariable.objects()
+        global_vars_list = self.get_global_variables()
 
         if scope == 'server':
             server_models = self.get_servers(*scope_ids)
@@ -305,7 +321,7 @@ class HabibiApi:
                 ))
 
             if event_id:
-                event = self.get_events(event_id)[0]
+                event = self.get_event(event_id)
                 for server in server_models:
                     gvs[server.id].update(dict(
                         SCALR_EVENT_NAME=event.name,
@@ -314,60 +330,43 @@ class HabibiApi:
                         SCALR_EVENT_INTERNAL_IP=event.triggering_server.private_ip,
                         SCALR_EVENT_ROLE_NAME=event.triggering_server.farm_role.role.name,
                         SCALR_EVENT_INSTANCE_INDEX=event.triggering_server.index,
-                        SCALR_EVENT_BEHAVIORS=','.join(
-                            event.triggering_server.farm_role.role.behaviors),
+                        SCALR_EVENT_BEHAVIORS=','.join(event.triggering_server.farm_role.role.behaviors),
                         SCALR_EVENT_INSTANCE_ID=event.triggering_server.id,
                         SCALR_EVENT_AMI_ID=event.triggering_server.farm_role.role.image
                     ))
-
-        if not user_defined:
-            result = {}
-            for server_id, server_gvs in gvs.items():
-                result[server_id] = [{'name': key, 'value': to_str(value), 'private': 0}
-                                     for key, value in server_gvs.items()]
-            return result
-
-        # We may easily extend it (add environment and account scopes)
-        scopes_graph = {
-            'server': {'farm_role': 1},
-            'farm_role': {'farm': 2, 'role': 1}
-        }
-
-        processed_scopes = list()
 
         def update_vars_from_scope(scope, scope_id, model=None):
             if scope in processed_scopes:
                 return
 
             if model is None:
-                try:
-                    model = getattr(
-                        self, "get_{0}s".format(scope))(scope_id)[0]
-                except KeyError:
-                    raise HabibiApiException(
-                        '{0} with id {1} does not exist'.format(scope.capitalize(), scope_id))
+                model = getattr(self, "get_{0}".format(scope))(scope_id)
 
-            for gv in global_vars_models:
+            for gv in global_vars_list:
                 if gv.name in gvs:
                     # GV with such name was redefined on lower scope
                     continue
                 try:
-                    value_for_scope = gv['scopes'][scope][
-                        "scope_{0}".format(scope_id)]
+                    value_for_scope = gv.scopes[scope][scope_id]
                 except KeyError:
                     continue
 
                 gvs[gv.name] = value_for_scope
 
             processed_scopes.append(scope)
-            if scope in scopes_graph:
+            if scope in self.scopes_graph:
                 parents = sorted(
-                    scopes_graph[scope].items(), key=lambda x: x[1], reverse=True)
+                    self.scopes_graph[scope].items(), key=lambda x: x[1], reverse=True)
 
                 for parent, weight in parents:
                     parent_id = getattr(model, parent).id
                     update_vars_from_scope(parent, parent_id)
 
-        update_vars_from_scope(scope, scope_id, model=scope_model)
+        if user_defined:
+            scope_ids = map(str, scope_ids)
+            processed_scopes = list()
+            for scope_id in scope_ids:
+                update_vars_from_scope(scope, scope_id, model=scope_model)
+
         return [{'name': key, 'value': to_str(value), 'private': 0}
-                for key, value in gvs.items()]
+                for key, value in gvs.items() if value]
