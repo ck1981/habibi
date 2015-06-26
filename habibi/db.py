@@ -6,6 +6,8 @@ import json
 import peewee
 from playhouse import db_url
 
+import habibi.exc
+
 DB_PROXY = peewee.Proxy()
 
 
@@ -25,12 +27,26 @@ def connect_to_db(url):
     return database
 
 
-def get_model_name_from_scope(scope):
-    """Finds peewee model name by scope name.
-       e.g. farm -> Farm
-            farm_role -> FarmRole
+def get_model_from_scope(scope):
+    """Finds peewee model by scope name.
+
+        :type scope: string
+        :rtype: peewee.Model
+
+        :raises habibi.exc.HabibiModelNotFound: if model could not be found
+
+        Examples:
+            get_model_from_scope('farm')      # Returns Farm class
+            get_model_from_scope('farm_role') # Returns FarmRole class
+
     """
-    return "".join([word.capitalize() for word in scope.split('_')])
+    model_name = "".join([word.capitalize() for word in scope.split('_')])
+    try:
+        model = globals()[model_name]
+        assert isinstance(model, peewee.Model)
+        return model
+    except (KeyError, AssertionError) as e:
+        raise habibi.exc.HabibiModelNotFound(model_name) from e
 
 
 class JsonField(peewee.TextField):
@@ -57,11 +73,11 @@ class HabibiModel(peewee.Model):
 
 
 class Farm(HabibiModel):
-    name = peewee.CharField(unique=True)
+    name = peewee.CharField(unique=True, index=True)
 
 
 class Role(HabibiModel):
-    name = peewee.CharField(unique=True)
+    name = peewee.CharField(unique=True, index=True)
     image = peewee.CharField()
     behaviors = JsonField()
 
