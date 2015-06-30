@@ -1,7 +1,7 @@
-__author__ = 'Nick Demyanchuk'
-__email__ = 'spike@scalr.com'
-
+# -*- coding: utf-8 -*-
+import sys
 import json
+import logging
 
 import peewee
 from playhouse import db_url
@@ -9,12 +9,14 @@ from playhouse import db_url
 import habibi.exc
 
 DB_PROXY = peewee.Proxy()
-
+LOG = logging.getLogger(__name__)
 
 def connect_to_db(url):
     """Connect to DB specified in url,
-    create tables for all habibi models.
+       create tables for all habibi models.
 
+    :type  url: str
+    :param url: Database url connection string.
     :return: database object
     :return type: peewee.Database
     """
@@ -42,15 +44,15 @@ def get_model_from_scope(scope):
     """
     model_name = "".join([word.capitalize() for word in scope.split('_')])
     try:
-        model = globals()[model_name]
-        assert isinstance(model, peewee.Model)
+
+        model = getattr(sys.modules[__name__], model_name)
         return model
-    except (KeyError, AssertionError) as e:
+    except (AttributeError, AssertionError) as e:
         raise habibi.exc.HabibiModelNotFound(model_name) from e
 
 
 class JsonField(peewee.TextField):
-
+    """Custom peewee field that stores JSON-like object in text field."""
     def db_value(self, value):
         return json.dumps(value)
 
@@ -66,7 +68,9 @@ def db_table_name_for_model(model):
 
 
 class HabibiModel(peewee.Model):
-
+    """Class that defines DB backend, and table naming convention.
+       All habibi models should inherit from this class.
+    """
     class Meta:
         database = DB_PROXY
         db_table_func = db_table_name_for_model
@@ -83,7 +87,7 @@ class Role(HabibiModel):
 
 
 class FarmRole(HabibiModel):
-    farm = peewee.ForeignKeyField(Farm, related_name='farm_roles')
+    farm = peewee.ForeignKeyField(Farm, related_name='farm_roles', on_delete='CASCADE')
     role = peewee.ForeignKeyField(Role)
     orchestration = JsonField()
 
@@ -97,22 +101,17 @@ class Server(HabibiModel):
     private_ip = peewee.CharField(null=True)
     host_machine = peewee.CharField(null=True)
     container_id = peewee.CharField(null=True)
-    volumes = peewee.TextField(null=True)
+    volumes = peewee.JsonField()
     status = peewee.CharField(default='pending launch')
-
 
 class Event(HabibiModel):
     name = peewee.CharField()
     event_id = peewee.CharField()
     triggering_server = peewee.ForeignKeyField(Server, related_name='sent_events')
 
-
-GV_SCOPES_AVAILABLE = ('farm', 'role', 'farm_role', 'server')
-
-
 class GlobalVariable(HabibiModel):
     name = peewee.CharField(unique=True)
-    scopes = JsonField(default={scope: {} for scope in GV_SCOPES_AVAILABLE}, null=True)
+    scopes = JsonField()
 
 
 SCALR_ENTITIES = (Farm, Role, FarmRole, Server, Event, GlobalVariable)
