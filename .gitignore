@@ -3,3 +3,7 @@
 *.pyc
 .vagrant
 .habibi
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+.python-version

@@ -20,8 +20,8 @@ import docker
 import peewee
 import playhouse.shortcuts as db_shortcuts
 
-import habibi.db
-import habibi.exc
+import habibi.db as habibi_db
+import habibi.exc as habibi_exc
 
 
 LOG = logging.getLogger(__name__)
@@ -37,12 +37,11 @@ class MetaReturnDicts(type):
                 res = fn(*args, **kwargs)
                 if isinstance(res, peewee.Model):
                     """Return dict instead of peewee.Model."""
-                    return db_shortcuts.model_to_dict(res, backrefs=True)
-
+                    return db_shortcuts.model_to_dict(res)
                 elif isinstance(res, collections.Iterable):
                     if all(map(isinstance, res, itertools.repeat(peewee.Model))):
                         """Transform list of peewee.Model objects to their JSON value."""
-                        return (db_shortcuts.model_to_dict(x, backrefs=True) for x in res)
+                        return (db_shortcuts.model_to_dict(x) for x in res)
                 """Return result untouched."""
                 return res
             return wrapped
@@ -65,11 +64,11 @@ class HabibiApi(metaclass=MetaReturnDicts):
     def __init__(self, db_url=None, docker_url=None, base_dir=None):
 
         self.base_dir = base_dir or '.habibi'
-        if not os.path.isdir(base_dir):
-            os.makedirs(base_dir)
+        if not os.path.isdir(self.base_dir):
+            os.makedirs(self.base_dir)
 
         db_url = db_url or 'sqlite:///:memory:'
-        self.database = habibi.db.connect_to_db(db_url)
+        self.database = habibi_db.connect_to_db(db_url)
 
         docker_url = docker_url or 'unix://var/run/docker.sock'
         self.docker = docker.Client(base_url=docker_url)
@@ -84,19 +83,20 @@ class HabibiApi(metaclass=MetaReturnDicts):
 
            :param model: model of sought-for entity
            :type  model: peewee.Model
-           :rtype: list of habibi.db.HabibiModel
-           :raises habibi.exc.HabibiApiNotFound: if no entities were found
+           :rtype: list of habibi_db.HabibiModel
+           :raises habibi_exc.HabibiApiNotFound: if no entities were found
         """
         query = model.select()
         if ids:
+            map(int, ids)
             query.where(model.id.in_(ids))
         if kwargs:
             query.filter(**kwargs)
 
-        objects = tuple(query)
+        objects = list(query)
 
         if not objects:
-            raise habibi.exc.HabibiApiNotFound(model, self.ids, self.kwargs)
+            raise habibi_exc.HabibiApiNotFound(model, ids, kwargs)
 
         return objects
 
@@ -113,7 +113,7 @@ class HabibiApi(metaclass=MetaReturnDicts):
 
                api.find_farms(1, 5, 7)
                # returns list of dicts, that represent found farms. If no farms were found,
-               # raises habibi.exc.HabibiApiNotFound exception
+               # raises habibi_exc.HabibiApiNotFound exception
 
                api.find_roles()
                # returns all roles from database
@@ -127,16 +127,16 @@ class HabibiApi(metaclass=MetaReturnDicts):
 
             for maybe_name in (scope, scope[:-1]):
                 try:
-                    model = habibi.db.get_model_from_scope(maybe_name)
+                    model = habibi_db.get_model_from_scope(maybe_name)
                     break
-                except habibi.exc.HabibiModelNotFound:
+                except habibi_exc.HabibiModelNotFound:
                     continue
             else:
-                raise habibi.exc.HabibiApiException('Unknown habibi entity "{}"'.format(scope))
+                raise habibi_exc.HabibiApiException('Unknown habibi entity "{}"'.format(scope))
 
             def search_fn(*args, **kwargs):
                 ret = self._find_entities(model, *args, **kwargs)
-                ret = [db_shortcuts.model_to_dict(_obj, backrefs=True) for _obj in ret]
+                ret = [db_shortcuts.model_to_dict(_obj) for _obj in ret]
                 if not plural:
                     return ret[0]
                 return ret
@@ -149,7 +149,7 @@ class HabibiApi(metaclass=MetaReturnDicts):
            :param string name: Unique name for the new farm.
            :returns: JSON representation of new farm.
         """
-        return habibi.db.Farm.create(name=name)
+        return habibi_db.Farm.create(name=name)
 
     def create_role(self, name, image, behaviors=None):
         """Create new habibi role, save to DB.
@@ -158,20 +158,19 @@ class HabibiApi(metaclass=MetaReturnDicts):
         :param list behaviors: list of role's behaviors
         """
         behaviors = (behaviors is not None) and behaviors or ["base"]
-        return habibi.db.Role.create(name=name, image=image, behaviors=behaviors)
+        return habibi_db.Role.create(name=name, image=image, behaviors=behaviors)
 
     def farm_add_role(self, farm_id, role_id, orchestration=None):
         """Add role to farm, which results in creating new farm_role."""
         orchestration = orchestration or dict()
-        return habibi.db.FarmRole.create(farm=farm_id, role=role_id, orchestration=orchestration)
+        return habibi_db.FarmRole.create(farm=farm_id, role=role_id, orchestration=orchestration)
 
     def farm_remove_role(self, farm_id, farm_role_id):
         """
         Remove role from the farm, destroy role's servers.
         :raises HabibiApiNotFound: if farm with id=`farm_id` contains no farm_role with id=`farm_role_id`
         """
-        farm_role = self._find_entities(habibi.db.FarmRole,
-                                        farm_id=farm_id, farm_role_id=farm_role_id)[0]
+        farm_role = self._find_entities(habibi_db.FarmRole, farm_role_id, farm=farm_id)[0]
 
         for server in farm_role.servers:
             self._terminate_server(server)
@@ -180,12 +179,12 @@ class HabibiApi(metaclass=MetaReturnDicts):
 
     def farm_terminate(self, farm_id):
         """Set Farm status to 'terminated', terminate all farm's servers."""
-        farm = self._find_entities(habibi.db.Farm, farm_id)[0]
+        farm = self._find_entities(habibi_db.Farm, farm_id)[0]
         servers = itertools.chain([farm_role.servers for farm_role in farm.farm_roles])
         for server in servers:
             self._terminate_server(server)
 
-        habibi.db.Farm.update(status='terminated').where(id=farm_id).execute()
+        habibi_db.Farm.update(status='terminated').where(id=farm_id).execute()
 
     def create_server(self, farm_role_id, zone=None, volumes=None):
         """Creates server record in DB.
@@ -196,10 +195,12 @@ class HabibiApi(metaclass=MetaReturnDicts):
         :return:
         """
         server_id = str(uuid.uuid4())
-        if isinstance(volumes, dict):
-            volumes = json.dumps(volumes)
-
-        return habibi.db.Server.create(id=server_id, farm_role=farm_role_id, zone=zone, volumes=volumes)
+        volumes = volumes or dict()
+        with self.database.atomic():
+            latest_index = habibi_db.Server.select(peewee.fn.Max(habibi_db.Server.index)).scalar()
+            index_for_new_server = latest_index and (latest_index + 1) or 1
+            return habibi_db.Server.create(index=index_for_new_server,
+                id=server_id, farm_role=farm_role_id, zone=zone, volumes=volumes)
 
     def run_server(self, server_id, cmd, env=None):
         """Run docker container for the server, created earlier using `create_server`.
@@ -215,30 +216,29 @@ class HabibiApi(metaclass=MetaReturnDicts):
         container_id = create_result['Id']
         self.docker.start(container=container_id)
 
-        habibi.db.Server.update(host_machine=socket.gethostname(),
+        habibi_db.Server.update(host_machine=socket.gethostname(),
                                 container_id=container_id,
                                 status='pending').where(
-                                    habibi.db.Server.id == server_id).execute()
+                                    habibi_db.Server.id == server_id).execute()
 
     def terminate_server(self, server_id):
         """Terminate container for the server with specified id."""
-        server = self._find_entities(habibi.db.Server, server_id)
+        server = self._find_entities(habibi_db.Server, server_id)
         self._terminate_server(server)
 
     def _terminate_server(self, server):
-        if not server.get('container_id'):
-            raise habibi.exc.HabibiApiException(
-                'Server has not been started yet. server_id={}'.format(server.id))
+        if not server.container_id:
+            return
 
         self.docker.kill(server.container_id)
         self.docker.remove_container(server.container_id)
-        habibi.db.Server.update(status='terminated').where(habibi.db.Server.id == server.id)
+        habibi_db.Server.update(status='terminated').where(habibi_db.Server.id == server.id)
 
     def get_server_output(self, server_id):
         """Retrieve output of container for the server with id=`server_id`."""
         server = self.get_server(server_id)
         if not server.get('container_id'):
-            raise habibi.exc.HabibiApiException(
+            raise habibi_exc.HabibiApiException(
                 'Server has not been started yet. server_id={}'.format(server_id))
         return self.docker.logs(server['container_id'])
 
@@ -254,7 +254,7 @@ class HabibiApi(metaclass=MetaReturnDicts):
            :returns: JSON representation of EventOrchestration (see private wiki for more info)
         """
         #TODO: indexes -> indices
-        event = self._find_entities(habibi.db.Event, event_id)[0]
+        event = self._find_entities(habibi_db.Event, event_id)[0]
         server = event.triggering_server
         farm_role = server.farm_role
         farm = farm_role.farm
@@ -299,8 +299,7 @@ class HabibiApi(metaclass=MetaReturnDicts):
     def create_event(self, name, triggering_server_id, event_id=None):
         """Create new event, that was triggered by server."""
         event_id = event_id or str(uuid.uuid4())
-        return habibi.db.Event.create(
-            name=name, triggering_server=triggering_server_id, event_id=event_id)
+        return habibi_db.Event.create(name=name, triggering_server=triggering_server_id, id=event_id)
 
     def set_global_variable(self, gv_name, gv_value, scope, scope_id):
         """Set value of user-defined GV in the provided scope.
@@ -312,9 +311,8 @@ class HabibiApi(metaclass=MetaReturnDicts):
            :type scope: str
            :type scope_id: int
         """
-        if scope not in habibi.db.GV_SCOPES_AVAILABLE:
-            raise habibi.exc.HabibiApiException("Unknown scope for GVs (global variables): {}.".format(scope))
-
+        if scope not in self._gv_scopes:
+            raise habibi_exc.HabibiApiException("Unknown scope for GVs (global variables): {}.".format(scope))
 
         getattr(self, 'get_{0}'.format(scope))(scope_id)
 
@@ -322,11 +320,12 @@ class HabibiApi(metaclass=MetaReturnDicts):
             try:
                 values_for_scopes = self.get_global_variable(name=gv_name)['scopes']
                 values_for_scopes[scope][scope_id] = gv_value
-                habibi.db.GlobalVariable.update(scopes=values_for_scopes).where(name=gv_name).execute()
-            except habibi.exc.HabibiNotFound:
+                habibi_db.GlobalVariable.update(scopes=values_for_scopes).where(
+                    habibi_db.GlobalVariable.name == gv_name).execute()
+            except habibi_exc.HabibiNotFound:
                 scopes = {scope: {} for scope in self._gv_scopes}
                 scopes[scope][scope_id] = gv_value
-                habibi.db.GlobalVariable.create(name=gv_name, scopes=scopes)
+                habibi_db.GlobalVariable.create(name=gv_name, scopes=scopes)
 
 
     def calculate_global_variables(self, scope, scope_ids, event_id=None, user_defined=False):
@@ -348,9 +347,9 @@ class HabibiApi(metaclass=MetaReturnDicts):
         if not isinstance(scope_ids, (list, tuple)):
             scope_ids = [scope_ids]
 
-        if scope not in habibi.db.GV_SCOPES_AVAILABLE:
-            raise habibi.exc.HabibiApiException("Unknown scope for GVs (global variables): {}".format(scope))
-        scope_model = habibi.db.get_model_from_scope(scope)
+        if scope not in habibi_db.GV_SCOPES_AVAILABLE:
+            raise habibi_exc.HabibiApiException("Unknown scope for GVs (global variables): {}".format(scope))
+        scope_model = habibi_db.get_model_from_scope(scope)
 
         def to_str(value):
             return value is None and '' or str(value)
@@ -360,7 +359,7 @@ class HabibiApi(metaclass=MetaReturnDicts):
         global_vars_list = self.find_global_variables()
 
         if scope == 'server':
-            server_models = self._find_entities(habibi.db.Server, *scope_ids)
+            server_models = self._find_entities(habibi_db.Server, *scope_ids)
             for server in server_models:
                 # Add server-scoped variables
                 gvs[server.id].update(dict(
@@ -375,7 +374,7 @@ class HabibiApi(metaclass=MetaReturnDicts):
                 ))
 
             if event_id:
-                event = self._find_entities(habibi.db.Event, event_id)[0]
+                event = self._find_entities(habibi_db.Event, event_id)[0]
                 for server in server_models:
                     gvs[server.id].update(dict(
                         SCALR_EVENT_NAME=event.name,

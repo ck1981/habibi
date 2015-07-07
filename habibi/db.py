@@ -8,8 +8,13 @@ from playhouse import db_url
 
 import habibi.exc
 
+
 DB_PROXY = peewee.Proxy()
 LOG = logging.getLogger(__name__)
+logger = logging.getLogger('peewee')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
+
 
 def connect_to_db(url):
     """Connect to DB specified in url,
@@ -25,7 +30,6 @@ def connect_to_db(url):
     DB_PROXY.initialize(database)
     for model in SCALR_ENTITIES:
         model.create_table(fail_silently=True)
-
     return database
 
 
@@ -44,7 +48,6 @@ def get_model_from_scope(scope):
     """
     model_name = "".join([word.capitalize() for word in scope.split('_')])
     try:
-
         model = getattr(sys.modules[__name__], model_name)
         return model
     except (AttributeError, AssertionError) as e:
@@ -64,11 +67,11 @@ class JsonField(peewee.TextField):
 
 
 def db_table_name_for_model(model):
-    return "{}s".format(model.__class__.__name__.lower())
+    return "{}s".format(model.__name__.lower())
 
 
 class HabibiModel(peewee.Model):
-    """Class that defines DB backend, and table naming convention.
+    """Class that definesq DB backend, and table naming convention.
        All habibi models should inherit from this class.
     """
     class Meta:
@@ -101,16 +104,16 @@ class Server(HabibiModel):
     private_ip = peewee.CharField(null=True)
     host_machine = peewee.CharField(null=True)
     container_id = peewee.CharField(null=True)
-    volumes = peewee.JsonField()
+    volumes = JsonField()
     status = peewee.CharField(default='pending launch')
 
 class Event(HabibiModel):
     name = peewee.CharField()
-    event_id = peewee.CharField()
+    id = peewee.CharField(primary_key=True)
     triggering_server = peewee.ForeignKeyField(Server, related_name='sent_events')
 
 class GlobalVariable(HabibiModel):
-    name = peewee.CharField(unique=True)
+    name = peewee.CharField(primary_key=True)
     scopes = JsonField()
 
 
