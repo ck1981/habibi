@@ -19,6 +19,7 @@ import collections
 import docker
 import peewee
 import playhouse.shortcuts as db_shortcuts
+from six import with_metaclass
 
 import habibi.db as habibi_db
 import habibi.exc as habibi_exc
@@ -49,14 +50,14 @@ class MetaReturnDicts(type):
         new_class_dict = class_dict.copy()
         for attribute_name, attribute_value in class_dict.items():
             """Decorate all public methods."""
-            if (type(attribute_value) is types.FunctionType):
+            if type(attribute_value) is types.FunctionType:
                 if attribute_name.startswith('_'):
                     continue
                 new_class_dict[attribute_name] = _wrapper(attribute_value)
         return type.__new__(meta, class_name, bases, new_class_dict)
 
 
-class HabibiApi(metaclass=MetaReturnDicts):
+class HabibiApi(with_metaclass(MetaReturnDicts, object)):
 
     _gv_scopes = ('server', 'farm_role', 'farm', 'role')
     _gv_scopes_resolution = {'server': {'farm_role': 1}, 'farm_role': {'farm': 2, 'role': 1}}
@@ -413,7 +414,7 @@ class HabibiApi(metaclass=MetaReturnDicts):
                 parents = sorted(
                     self.scopes_graph[scope].items(), key=lambda x: x[1], reverse=True)
 
-                for parent, weight in parents:
+                for parent, _ in parents:
                     parent_id = getattr(model, parent).id
                     update_vars_from_scope(parent, parent_id)
 

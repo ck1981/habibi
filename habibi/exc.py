@@ -19,16 +19,17 @@ class HabibiNotFound(HabibiException):
 class HabibiModelNotFound(HabibiNotFound):
     def __init__(self, model_name):
         self.model_name = model_name
+        super(HabibiModelNotFound, self).__init__()
 
     def __str__(self):
         return 'Habibi DB model does not exist. name="{}"'.format(self.model_name)
 
 class HabibiApiNotFound(HabibiNotFound):
     def __init__(self, model, ids, kwargs):
-
         self.model = model
         self.ids = ids and [str(_id) for _id in ids] or list()
         self.kwargs = kwargs or dict()
+        super(HabibiApiNotFound, self).__init__()
 
     def __str__(self):
         what = self.model.__name__ + 's'

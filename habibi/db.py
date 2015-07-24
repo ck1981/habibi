@@ -27,6 +27,7 @@ def connect_to_db(url):
     """
     database = db_url.connect(url)
     database.register_fields({'json': 'json'})
+    #database.init()
     DB_PROXY.initialize(database)
     for model in SCALR_ENTITIES:
         model.create_table(fail_silently=True)
@@ -50,8 +51,8 @@ def get_model_from_scope(scope):
     try:
         model = getattr(sys.modules[__name__], model_name)
         return model
-    except (AttributeError, AssertionError) as e:
-        raise habibi.exc.HabibiModelNotFound(model_name) from e
+    except (AttributeError, AssertionError):
+        raise habibi.exc.HabibiModelNotFound(model_name)
 
 
 class JsonField(peewee.TextField):
@@ -74,7 +75,7 @@ class HabibiModel(peewee.Model):
     """Class that definesq DB backend, and table naming convention.
        All habibi models should inherit from this class.
     """
-    class Meta:
+    class Meta(object):
         database = DB_PROXY
         db_table_func = db_table_name_for_model
 

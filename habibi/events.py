@@ -98,8 +98,8 @@ class Event(object):
     def __getitem__(self, item):
         return self.cond[item]
 
-    def __contains__(self, test_cond):
-        test_event = test_cond if isinstance(test_cond, Event) else Event(test_cond)
+    def __contains__(self, **test_cond):
+        test_event = test_cond if isinstance(test_cond, Event) else Event(**test_cond)
         for k, v in test_event.cond.iteritems():
             k, attr = k.split('.', 1) if '.' in k else (k, None)
             # TODO: use wildcards for strings, add lambdas support
