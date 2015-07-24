@@ -144,6 +144,8 @@ class HabibiApi(with_metaclass(MetaReturnDicts, object)):
 
             return search_fn
 
+        raise AttributeError(item)
+
     def create_farm(self, name):
         """Create new farm and save it to DB.
 
