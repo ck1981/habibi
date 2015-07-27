@@ -26,6 +26,8 @@ import habibi.exc as habibi_exc
 
 
 LOG = logging.getLogger(__name__)
+LOG.setLevel(logging.DEBUG)
+logging.basicConfig()
 
 
 class MetaReturnDicts(type):
@@ -324,6 +326,7 @@ class HabibiApi(with_metaclass(MetaReturnDicts, object)):
         with self.database.atomic():
             try:
                 values_for_scopes = self.get_global_variable(name=gv_name)['scopes']
+                LOG.error(values_for_scopes)
                 values_for_scopes[scope][scope_id] = gv_value
                 habibi_db.GlobalVariable.update(scopes=values_for_scopes).where(
                     habibi_db.GlobalVariable.name == gv_name).execute()

@@ -68,7 +68,7 @@ class JsonField(peewee.TextField):
 
 
 def db_table_name_for_model(model):
-    return "{}s".format(model.__name__.lower())
+    return "habibi_{}s".format(model.__name__.lower())
 
 
 class HabibiModel(peewee.Model):
