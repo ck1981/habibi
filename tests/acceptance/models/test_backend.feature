@@ -10,13 +10,16 @@ Feature: Habibi entities saved to persistent DB
             """
          And I added this role to my farm
          And I created 2 servers of that new farm_role in zone 'us-east-1a'
+            """
+            {"ids": ["9bab5389-820d-4fea-b13a-539dc69bcf4a", "d32741f4-bb05-442f-abb4-c08ad972e242"]}
+            """
          And I created new event 'CustomEvent' triggered by one of my servers
          And I set GVs
-            | gv_name | gv_value | scope  | scope_id |
-            | Test    | value1   | farm   | 1        |
-            | Test2   | value2   | role   | 1        |
-            | Test2   | value3   | server | 1        |
-            | Test4   | value4   | server | 2        |
+            | gv_name | gv_value | scope  | scope_id                                    |
+            | Test    | value1   | farm   | 1                                           |
+            | Test2   | value2   | role   | 1                                           |
+            | Test2   | value3   | server | 9bab5389-820d-4fea-b13a-539dc69bcf4a        |
+            | Test4   | value4   | server | d32741f4-bb05-442f-abb4-c08ad972e242        |
 
         When I try to find my scalr objects through API
         Then I receive exactly what I added before

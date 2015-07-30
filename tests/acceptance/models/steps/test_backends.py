@@ -29,8 +29,9 @@ def create_farmrole(ctx):
 def create_servers(ctx, how_much, zone):
     ctx.servers = list()
     how_much = int(how_much)
-    for _ in range(how_much):
-        server = ctx.api.create_server(ctx.farm_role['id'], zone=zone)
+    server_ids = json.loads(ctx.text.strip())['ids']
+    for idx in range(how_much):
+        server = ctx.api.create_server(ctx.farm_role['id'], zone=zone, server_id=server_ids[idx])
         ctx.servers.append(server)
 
 @behave.when("I created new event '{ev_name}' triggered by one of my servers")
@@ -43,7 +44,6 @@ def set_gv(ctx):
     ctx.gvs = []
     for row in ctx.table:
         kwds = dict(zip(row.headings, row.cells))
-        print(kwds)
         gv = ctx.api.set_global_variable(**kwds)
         ctx.gvs.append(gv)
 
@@ -82,5 +82,4 @@ def match(ctx):
         else:
             raise Exception('Server id={} not found in DB'.format(server['id']))
 
-    print(gvs)
     assert 3 == len(gvs)

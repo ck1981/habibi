@@ -22,7 +22,7 @@ def connect_to_db(url):
 
     :type  url: str
     :param url: Database url connection string.
-    :return: database object
+    :return: database` object
     :return type: peewee.Database
     """
     database = db_url.connect(url)
@@ -108,10 +108,12 @@ class Server(HabibiModel):
     volumes = JsonField()
     status = peewee.CharField(default='pending launch')
 
+
 class Event(HabibiModel):
     name = peewee.CharField()
     id = peewee.CharField(primary_key=True)
     triggering_server = peewee.ForeignKeyField(Server, related_name='sent_events')
+
 
 class GlobalVariable(HabibiModel):
     name = peewee.CharField(primary_key=True)

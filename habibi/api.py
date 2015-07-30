@@ -91,10 +91,13 @@ class HabibiApi(with_metaclass(MetaReturnDicts, object)):
         """
         query = model.select()
         if ids:
-            map(int, ids)
-            query.where(model.id.in_(ids))
-        if kwargs:
-            query.filter(**kwargs)
+            try:
+                map(int, ids)
+            except ValueError:
+                pass
+            query = query.where(model.id.in_(ids))
+        for k, v in kwargs.iteritems():
+            query = query.where((getattr(model, k) == v))
 
         objects = list(query)
 
@@ -139,10 +142,9 @@ class HabibiApi(with_metaclass(MetaReturnDicts, object)):
 
             def search_fn(*args, **kwargs):
                 ret = self._find_entities(model, *args, **kwargs)
-                ret = [db_shortcuts.model_to_dict(_obj) for _obj in ret]
                 if not plural:
-                    return ret[0]
-                return ret
+                    return db_shortcuts.model_to_dict(ret[0])
+                return [db_shortcuts.model_to_dict(_obj) for _obj in ret]
 
             return search_fn
 
@@ -191,7 +193,7 @@ class HabibiApi(with_metaclass(MetaReturnDicts, object)):
 
         habibi_db.Farm.update(status='terminated').where(id=farm_id).execute()
 
-    def create_server(self, farm_role_id, zone=None, volumes=None):
+    def create_server(self, farm_role_id, server_id=None, zone=None, volumes=None):
         """Creates server record in DB.
 
         :param zone:
@@ -199,7 +201,7 @@ class HabibiApi(with_metaclass(MetaReturnDicts, object)):
 
         :return:
         """
-        server_id = str(uuid.uuid4())
+        server_id = server_id or str(uuid.uuid4())
         volumes = volumes or dict()
         with self.database.atomic():
             latest_index = habibi_db.Server.select(peewee.fn.Max(habibi_db.Server.index)).scalar()
@@ -326,7 +328,6 @@ class HabibiApi(with_metaclass(MetaReturnDicts, object)):
         with self.database.atomic():
             try:
                 values_for_scopes = self.get_global_variable(name=gv_name)['scopes']
-                LOG.error(values_for_scopes)
                 values_for_scopes[scope][scope_id] = gv_value
                 habibi_db.GlobalVariable.update(scopes=values_for_scopes).where(
                     habibi_db.GlobalVariable.name == gv_name).execute()
