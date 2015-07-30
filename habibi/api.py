@@ -91,10 +91,6 @@ class HabibiApi(with_metaclass(MetaReturnDicts, object)):
         """
         query = model.select()
         if ids:
-            try:
-                map(int, ids)
-            except ValueError:
-                pass
             query = query.where(model.id.in_(ids))
         for k, v in kwargs.iteritems():
             query = query.where((getattr(model, k) == v))
