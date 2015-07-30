@@ -1,13 +1,10 @@
-import random
+import os
+import tempfile
+import shutil
 
-from mongoengine import connection
-import mongoengine as me
+def before_all(ctx):
+    ctx.base_dir = tempfile.mkdtemp()
 
-
-def before_all(context):
-    context.db_name = db_name = 'test%d' % random.randint(1, 1000000)
-    context.connection = me.connect(db_name)
-
-def after_all(context):
-    conn = connection.get_connection()
-    conn.drop_database(context.db_name)
+def after_all(ctx):
+    if os.path.isdir(ctx.base_dir):
+        shutil.rmtree(ctx.base_dir)
