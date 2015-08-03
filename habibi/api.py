@@ -212,17 +212,18 @@ class HabibiApi(with_metaclass(MetaReturnDicts, object)):
         :param dict env: environment variables to set for the container
         """
         server = self.get_server(server_id)
-        volumes = json.loads(server.volumes)
+        binds = ["{}:{}".format(k, v) for k, v in server['volumes'].iteritems()]
 
-        create_result = self.docker.create_container(server.farmrole.role.image, command=cmd,
-            environment=env, volumes=volumes, detach=True, tty=True)
+        create_result = self.docker.create_container(server.farmrole.role.image,
+            command=cmd, environment=env, detach=True, tty=True,
+            host_config=docker.utils.create_host_config(binds=binds),
+            volumes=server['volumes'].values())
         container_id = create_result['Id']
         self.docker.start(container=container_id)
 
         habibi_db.Server.update(host_machine=socket.gethostname(),
                                 container_id=container_id,
-                                status='pending').where(
-                                    habibi_db.Server.id == server_id).execute()
+                                status='pending').where(habibi_db.Server.id == server_id).execute()
 
     def terminate_server(self, server_id):
         """Terminate container for the server with specified id."""
