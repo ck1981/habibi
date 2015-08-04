@@ -7,13 +7,11 @@
 
 """
 import os
-import json
 import uuid
 import types
 import socket
 import logging
 import itertools
-import functools
 import collections
 
 import six
@@ -35,7 +33,7 @@ class MetaReturnDicts(type):
     def __new__(meta, class_name, bases, class_dict):
 
         def _wrapper(fn):
-            @functools.wraps(fn)
+            @six.wraps(fn)
             def wrapped(*args, **kwargs):
                 res = fn(*args, **kwargs)
                 if isinstance(res, peewee.Model):
@@ -50,7 +48,7 @@ class MetaReturnDicts(type):
             return wrapped
 
         new_class_dict = class_dict.copy()
-        for attribute_name, attribute_value in class_dict.items():
+        for attribute_name, attribute_value in six.iteritems(class_dict):
             """Decorate all public methods."""
             if type(attribute_value) is types.FunctionType:
                 if attribute_name.startswith('_'):
@@ -70,7 +68,7 @@ class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
         if not os.path.isdir(self.base_dir):
             os.makedirs(self.base_dir)
 
-        db_url = db_url or 'sqlite:///:memory:'
+        db_url = db_url or os.environ.get('HABIBI_DB_URL') or 'sqlite:///:memory:'
         self.database = habibi_db.connect_to_db(db_url)
 
         docker_url = docker_url or 'unix://var/run/docker.sock'
@@ -329,7 +327,7 @@ class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
                 habibi_db.GlobalVariable.update(scopes=values_for_scopes).where(
                     habibi_db.GlobalVariable.name == gv_name).execute()
             except habibi_exc.HabibiNotFound:
-                scopes = {scope: {} for scope in self._gv_scopes}
+                scopes = dict((scope, dict()) for scope in self._gv_scopes)
                 scopes[scope][scope_id] = gv_value
                 habibi_db.GlobalVariable.create(name=gv_name, scopes=scopes)
 
@@ -353,15 +351,16 @@ class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
         if not isinstance(scope_ids, (list, tuple)):
             scope_ids = [scope_ids]
 
-        if scope not in habibi_db.GV_SCOPES_AVAILABLE:
-            raise habibi_exc.HabibiApiException("Unknown scope for GVs (global variables): {}".format(scope))
+        if scope not in self._gv_scopes:
+            raise habibi_exc.HabibiApiException(
+                    "Unknown scope for GVs (global variables): {}".format(scope))
         scope_model = habibi_db.get_model_from_scope(scope)
 
         def to_str(value):
             return value is None and '' or str(value)
 
         # Mapping {scope_id1: {gv1: value, gv2: value}, scope_id2: {...}}
-        gvs = {_id: dict() for _id in scope_ids}
+        gvs = dict((_id, dict()) for _id in scope_ids)
         global_vars_list = self.find_global_variables()
 
         if scope == 'server':
@@ -414,18 +413,18 @@ class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
 
             processed_scopes.append(scope)
             if scope in self.scopes_graph:
-                parents = sorted(
-                    self.scopes_graph[scope].items(), key=lambda x: x[1], reverse=True)
+                parents = sorted(six.iteritems(self.scopes_graph[scope]), key=lambda x: x[1],
+                                 reverse=True)
 
                 for parent, _ in parents:
                     parent_id = getattr(model, parent).id
                     update_vars_from_scope(parent, parent_id)
 
         if user_defined:
-            scope_ids = map(str, scope_ids)
+            scope_ids = six.map(str, scope_ids)
             processed_scopes = list()
             for scope_id in scope_ids:
                 update_vars_from_scope(scope, scope_id, model=scope_model)
 
         return [{'name': key, 'value': to_str(value), 'private': 0}
-                for key, value in gvs.items() if value]
+                for key, value in six.iteritems(gvs) if value]

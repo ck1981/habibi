@@ -3,6 +3,7 @@ import sys
 import json
 import logging
 
+import six
 import peewee
 from playhouse import db_url
 
@@ -27,7 +28,7 @@ def connect_to_db(url):
     """
     database = db_url.connect(url)
     database.register_fields({'json': 'json'})
-    #database.init()
+
     DB_PROXY.initialize(database)
     for model in SCALR_ENTITIES:
         model.create_table(fail_silently=True)
@@ -51,8 +52,8 @@ def get_model_from_scope(scope):
     try:
         model = getattr(sys.modules[__name__], model_name)
         return model
-    except (AttributeError, AssertionError):
-        raise habibi.exc.HabibiModelNotFound(model_name)
+    except (AttributeError, AssertionError) as e:
+        six.raise_from(habibi.exc.HabibiModelNotFound(model_name), e)
 
 
 class JsonField(peewee.TextField):
