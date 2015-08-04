@@ -361,7 +361,7 @@ class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
 
         # Mapping {scope_id1: {gv1: value, gv2: value}, scope_id2: {...}}
         gvs = dict((_id, dict()) for _id in scope_ids)
-        global_vars_list = self.find_global_variables()
+        global_vars_list = self._find_entities(habibi_db.GlobalVariable)
 
         if scope == 'server':
             server_models = self._find_entities(habibi_db.Server, *scope_ids)
