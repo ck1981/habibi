@@ -371,7 +371,6 @@ class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
             for server in server_models:
                 # Add server-scoped variables
                 gvs[server.id].update(dict(
-                    SERVER_CLOUD_LOCATION_ZONE=server.zone,
                     SCALR_BEHAVIORS=','.join(server.farm_role.role.behaviors),
                     SCALR_FARM_ROLE_ID=server.farm_role.id,
                     SCALR_FARM_ID=server.farm_role.farm.id,
@@ -386,7 +385,6 @@ class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
                 for server in server_models:
                     gvs[server.id].update(dict(
                         SCALR_EVENT_NAME=event.name,
-                        SCALR_EVENT_AVAIL_ZONE=event.triggering_server.zone,
                         SCALR_EVENT_EXTERNAL_IP=event.triggering_server.public_ip,
                         SCALR_EVENT_INTERNAL_IP=event.triggering_server.private_ip,
                         SCALR_EVENT_ROLE_NAME=event.triggering_server.farm_role.role.name,
