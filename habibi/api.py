@@ -16,10 +16,10 @@ import itertools
 import functools
 import collections
 
+import six
 import docker
 import peewee
 import playhouse.shortcuts as db_shortcuts
-from six import with_metaclass
 
 import habibi.db as habibi_db
 import habibi.exc as habibi_exc
@@ -59,7 +59,7 @@ class MetaReturnDicts(type):
         return type.__new__(meta, class_name, bases, new_class_dict)
 
 
-class HabibiApi(with_metaclass(MetaReturnDicts, object)):
+class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
 
     _gv_scopes = ('server', 'farm_role', 'farm', 'role')
     _gv_scopes_resolution = {'server': {'farm_role': 1}, 'farm_role': {'farm': 2, 'role': 1}}
@@ -92,7 +92,7 @@ class HabibiApi(with_metaclass(MetaReturnDicts, object)):
         query = model.select()
         if ids:
             query = query.where(model.id.in_(ids))
-        for k, v in kwargs.iteritems():
+        for k, v in six.iteritems(kwargs):
             query = query.where((getattr(model, k) == v))
 
         objects = list(query)
@@ -189,7 +189,7 @@ class HabibiApi(with_metaclass(MetaReturnDicts, object)):
 
         habibi_db.Farm.update(status='terminated').where(id=farm_id).execute()
 
-    def create_server(self, farm_role_id, server_id=None, zone=None, volumes=None):
+    def create_server(self, farm_role_id, server_id=None, volumes=None):
         """Creates server record in DB.
 
         :param zone:
@@ -202,8 +202,8 @@ class HabibiApi(with_metaclass(MetaReturnDicts, object)):
         with self.database.atomic():
             latest_index = habibi_db.Server.select(peewee.fn.Max(habibi_db.Server.index)).scalar()
             index_for_new_server = latest_index and (latest_index + 1) or 1
-            return habibi_db.Server.create(index=index_for_new_server,
-                id=server_id, farm_role=farm_role_id, zone=zone, volumes=volumes)
+            return habibi_db.Server.create(index=index_for_new_server, id=server_id,
+                                           farm_role=farm_role_id, volumes=volumes)
 
     def run_server(self, server_id, cmd, env=None):
         """Run docker container for the server, created earlier using `create_server`.
@@ -211,13 +211,14 @@ class HabibiApi(with_metaclass(MetaReturnDicts, object)):
         :param list cmd: list of command-line arguments to run inside docker container
         :param dict env: environment variables to set for the container
         """
-        server = self.get_server(server_id)
-        binds = ["{}:{}".format(k, v) for k, v in server['volumes'].iteritems()]
+        server = self._find_entities(habibi_db.Server, server_id)[0]
+        binds = ["{}:{}".format(k, v) for k, v in six.iteritems(server.volumes)]
 
-        create_result = self.docker.create_container(server.farmrole.role.image,
+
+        create_result = self.docker.create_container(server.farm_role.role.image,
             command=cmd, environment=env, detach=True, tty=True,
             host_config=docker.utils.create_host_config(binds=binds),
-            volumes=server['volumes'].values())
+            volumes=list(six.itervalues(server.volumes)))
         container_id = create_result['Id']
         self.docker.start(container=container_id)
 
@@ -231,19 +232,19 @@ class HabibiApi(with_metaclass(MetaReturnDicts, object)):
         self._terminate_server(server)
 
     def _terminate_server(self, server):
-        if not server.container_id:
+        if not server['container_id']:
             return
 
-        self.docker.kill(server.container_id)
-        self.docker.remove_container(server.container_id)
-        habibi_db.Server.update(status='terminated').where(habibi_db.Server.id == server.id)
+        self.docker.kill(server['container_id'])
+        self.docker.remove_container(server['container_id'])
+        habibi_db.Server.update(status='terminated').where(habibi_db.Server.id == server['id'])
 
     def get_server_output(self, server_id):
         """Retrieve output of container for the server with id=`server_id`."""
         server = self.get_server(server_id)
         if not server.get('container_id'):
             raise habibi_exc.HabibiApiException(
-                'Server has not been started yet. server_id={}'.format(server_id))
+                    'Server has not been started yet. server_id={}'.format(server_id))
         return self.docker.logs(server['container_id'])
 
     def orchestrate_event(self, event_id):
@@ -257,7 +258,6 @@ class HabibiApi(with_metaclass(MetaReturnDicts, object)):
            :type event_id: integer
            :returns: JSON representation of EventOrchestration (see private wiki for more info)
         """
-        #TODO: indexes -> indices
         event = self._find_entities(habibi_db.Event, event_id)[0]
         server = event.triggering_server
         farm_role = server.farm_role

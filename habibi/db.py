@@ -99,7 +99,6 @@ class FarmRole(HabibiModel):
 class Server(HabibiModel):
     id = peewee.CharField(primary_key=True)
     index = peewee.IntegerField()
-    zone = peewee.CharField()
     farm_role = peewee.ForeignKeyField(FarmRole, related_name='servers')
     public_ip = peewee.CharField(null=True)
     private_ip = peewee.CharField(null=True)
