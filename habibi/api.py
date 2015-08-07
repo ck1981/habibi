@@ -353,7 +353,7 @@ class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
 
         if scope not in self._gv_scopes:
             raise habibi_exc.HabibiApiException(
-                    "Unknown scope for GVs (global variables): {}".format(scope))
+                "Unknown scope for GVs (global variables): {}".format(scope))
         scope_model = habibi_db.get_model_from_scope(scope)
 
         def to_str(value):
@@ -394,6 +394,9 @@ class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
                         SCALR_EVENT_AMI_ID=event.triggering_server.farm_role.role.image
                     ))
 
+        return gvs
+
+        """
         def update_vars_from_scope(scope, scope_id, model=None):
             if scope in processed_scopes:
                 return
@@ -410,7 +413,7 @@ class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
                 except KeyError:
                     continue
 
-                gvs[gv.name] = value_for_scope
+                gvs[scope_id][gv.name] = value_for_scope
 
             processed_scopes.append(scope)
             if scope in self.scopes_graph:
@@ -425,7 +428,8 @@ class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
             scope_ids = six.map(str, scope_ids)
             processed_scopes = list()
             for scope_id in scope_ids:
-                update_vars_from_scope(scope, scope_id, model=scope_model)
+                update_vars_from_scope(scope, scope_id)
 
         return [{'name': key, 'value': to_str(value), 'private': 0}
                 for key, value in six.iteritems(gvs) if value]
+        """
