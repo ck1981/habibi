@@ -226,7 +226,7 @@ class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
 
     def terminate_server(self, server_id):
         """Terminate container for the server with specified id."""
-        server = self._find_entities(habibi_db.Server, server_id)
+        server = self._find_entities(habibi_db.Server, server_id)[0]
         self._terminate_server(server)
 
     def _terminate_server(self, server):
