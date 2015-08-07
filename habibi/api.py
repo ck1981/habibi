@@ -223,6 +223,7 @@ class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
         habibi_db.Server.update(host_machine=socket.gethostname(),
                                 container_id=container_id,
                                 status='pending').where(habibi_db.Server.id == server_id).execute()
+        return container_id
 
     def terminate_server(self, server_id):
         """Terminate container for the server with specified id."""
