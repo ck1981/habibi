@@ -215,7 +215,7 @@ class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
 
         create_result = self.docker.create_container(server.farm_role.role.image,
             command=cmd, environment=env, detach=True, tty=True,
-            host_config=docker.utils.create_host_config(binds=binds),
+            host_config=docker.utils.create_host_config(binds=binds, privileged=True),
             volumes=list(six.itervalues(server.volumes)))
         container_id = create_result['Id']
         self.docker.start(container=container_id)
