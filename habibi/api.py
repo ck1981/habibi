@@ -230,12 +230,12 @@ class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
         self._terminate_server(server)
 
     def _terminate_server(self, server):
-        if not server['container_id']:
+        if not server.container_id:
             return
 
-        self.docker.kill(server['container_id'])
-        self.docker.remove_container(server['container_id'])
-        habibi_db.Server.update(status='terminated').where(habibi_db.Server.id == server['id'])
+        self.docker.kill(server.container_id)
+        self.docker.remove_container(server.container_id)
+        habibi_db.Server.update(status='terminated').where(habibi_db.Server.id == server.id)
 
     def get_server_output(self, server_id):
         """Retrieve output of container for the server with id=`server_id`."""
