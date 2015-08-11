@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 import sys
 import json
 import logging
@@ -12,9 +13,11 @@ import habibi.exc
 
 DB_PROXY = peewee.Proxy()
 LOG = logging.getLogger(__name__)
-logger = logging.getLogger('peewee')
-logger.setLevel(logging.DEBUG)
-logger.addHandler(logging.StreamHandler())
+
+if 'DEBUG' == os.environ.get('HABIBI_LOGLEVEL'):
+    logger = logging.getLogger('peewee')
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(logging.StreamHandler())
 
 
 def connect_to_db(url):
