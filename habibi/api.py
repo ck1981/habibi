@@ -40,7 +40,7 @@ class MetaReturnDicts(type):
                     """Return dict instead of peewee.Model."""
                     return db_shortcuts.model_to_dict(res)
                 elif isinstance(res, collections.Iterable):
-                    if all(six.map(isinstance, res, itertools.repeat(peewee.Model))):
+                    if all(six.moves.map(isinstance, res, itertools.repeat(peewee.Model))):
                         """Transform list of peewee.Model objects to their JSON value."""
                         return (db_shortcuts.model_to_dict(x) for x in res)
                 """Return result untouched."""
