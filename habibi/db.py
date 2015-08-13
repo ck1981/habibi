@@ -14,11 +14,6 @@ import habibi.exc
 DB_PROXY = peewee.Proxy()
 LOG = logging.getLogger(__name__)
 
-if 'DEBUG' == os.environ.get('HABIBI_LOGLEVEL'):
-    logger = logging.getLogger('peewee')
-    logger.setLevel(logging.DEBUG)
-    logger.addHandler(logging.StreamHandler())
-
 
 def connect_to_db(url):
     """Connect to DB specified in url,

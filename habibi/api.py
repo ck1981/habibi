@@ -23,8 +23,12 @@ import habibi.db as habibi_db
 import habibi.exc as habibi_exc
 
 
+if 'DEBUG' == os.environ.get('HABIBI_LOGLEVEL'):
+    for logger_name in ('peewee', 'habibi'):
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(logging.DEBUG)
+
 LOG = logging.getLogger(__name__)
-LOG.setLevel(logging.DEBUG)
 logging.basicConfig()
 
 
@@ -236,7 +240,7 @@ class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
 
         self.docker.kill(server.container_id)
         self.docker.remove_container(server.container_id)
-        habibi_db.Server.update(status='terminated').where(habibi_db.Server.id == server.id).execute()
+        habibi_db.Server.update(status='terminated').where(habibi_db.Server.id == server.id)
 
     def get_server_output(self, server_id):
         """Retrieve output of container for the server with id=`server_id`."""
