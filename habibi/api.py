@@ -301,14 +301,22 @@ class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
                         mapping[sid] = []
                     mapping[sid].append(rule_index)
 
-        return {'rules': matched_rules,
-                'mapping': [{'server_id': server_id, 'rule_indexes': mapping[server_id]}
-                    for server_id in mapping]}
+        gvs = self.calculate_global_variables('event', mapping.keys(), event_id)
+        return {
+            'rules': matched_rules,
+            'server_to_rules_mapping': [{
+                'server_id': server_id,
+                'global_variables': [
+                    {'name': key, 'value': value, 'hidden': False} \
+                    for key, value in gvs[server_id]],
+                'rule_indexes': mapping[server_id]} \
+                for server_id in mapping]}
 
     def create_event(self, name, triggering_server_id, event_id=None):
         """Create new event, that was triggered by server."""
         event_id = event_id or str(uuid.uuid4())
         return habibi_db.Event.create(name=name, triggering_server=triggering_server_id, id=event_id)
+
 
     def set_global_variable(self, gv_name, gv_value, scope, scope_id):
         """Set value of user-defined GV in the provided scope.
