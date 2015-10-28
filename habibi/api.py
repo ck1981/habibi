@@ -301,7 +301,7 @@ class HabibiApi(six.with_metaclass(MetaReturnDicts, object)):
                         mapping[sid] = []
                     mapping[sid].append(rule_index)
 
-        gvs = self.calculate_global_variables('event', mapping.keys(), event_id)
+        gvs = self.calculate_global_variables('server', mapping.keys(), event_id)
         return {
             'rules': matched_rules,
             'server_to_rules_mapping': [{
